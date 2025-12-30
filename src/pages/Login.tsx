@@ -1,6 +1,8 @@
+import { supabase } from '@/lib/supabase';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowUpRight, CheckCircle, ChevronRight, Eye, EyeOff, Home, Mail, Send, X, XCircle } from 'lucide-react';
 import React, { useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Footer } from '../components/layout/Footer';
 import { Header } from '../components/layout/Header';
 
@@ -8,10 +10,17 @@ import { Header } from '../components/layout/Header';
 type ResetPasswordStatus = 'idle' | 'loading' | 'success' | 'error';
 
 export const Login: React.FC = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Verificar se o cadastro foi realizado com sucesso
+  const searchParams = new URLSearchParams(location.search);
+  const isSuccess = searchParams.get('success') === 'signup';
 
   // Estados do modal de recuperação de senha
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
@@ -19,22 +28,139 @@ export const Login: React.FC = () => {
   const [resetStatus, setResetStatus] = useState<ResetPasswordStatus>('idle');
   const [isResetLoading, setIsResetLoading] = useState(false);
 
+  const handleGoogleLogin = async () => {
+    try {
+      console.log('[Auth] Iniciando login com Google...');
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/login`,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'select_account',
+          },
+        },
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      console.error('[Auth] Erro no login com Google:', err);
+      setError(err.message || 'Erro ao conectar com Google.');
+    }
+  };
+
+  // Verificar se o usuário já está logado ao carregar a página
+  React.useEffect(() => {
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        console.log('[Auth] Usuário já possui sessão ativa. Verificando perfil para redirecionamento...');
+        try {
+          const { data: userData, error: userError } = await supabase
+            .from('tbf_controle_user')
+            .select('role, signature')
+            .eq('id', session.user.id)
+            .single();
+
+          if (!userError && userData) {
+            if (userData.role === 'aluno') {
+              if (userData.signature === 'ativo') {
+                navigate('/aluno/dashboard');
+              } else {
+                navigate('/aguardando-aprovacao');
+              }
+            } else if (userData.role === 'admin' || userData.role === 'professor') {
+              navigate('/setup-inicial');
+            }
+          }
+        } catch (err) {
+          console.error('[Auth] Erro ao verificar sessão existente:', err);
+        }
+      }
+    };
+    checkUser();
+
+    // Listener para mudanças de estado de autenticação (ex: após login com Google)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log(`[Auth] Evento de autenticação: ${event}`);
+      if (event === 'SIGNED_IN' && session) {
+        checkUser();
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [navigate]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setError(null);
     
-    // Simulação - aqui você conectará ao backend
-    console.log('Login attempt:', { email, password });
+    console.log('[Auth] Iniciando tentativa de login para:', email);
     
-    setTimeout(() => {
+    try {
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      console.log('[Auth] Resposta do Supabase Auth:', { data, error: authError });
+
+      if (authError) throw authError;
+
+      if (data.user) {
+        console.log('[Auth] Login bem-sucedido para:', data.user.email);
+        
+        // Buscar role e signature do usuário para redirecionamento correto
+        console.log('[Database] Buscando perfil para ID:', data.user.id);
+        const { data: userData, error: userError } = await supabase
+          .from('tbf_controle_user')
+          .select('role, signature')
+          .eq('id', data.user.id)
+          .single();
+
+        if (userError) {
+          console.error('[Database] Erro ao buscar dados do usuário:', userError);
+          // Em caso de erro, não assume que é admin. Tenta deslogar e mostrar erro.
+          await supabase.auth.signOut();
+          setError('Erro ao carregar seu perfil. Por favor, tente novamente.');
+          return;
+        }
+
+        console.log('[Auth] Perfil carregado com sucesso:', userData);
+
+        // Lógica de redirecionamento baseada em role e signature
+        if (userData && userData.role === 'aluno') {
+          if (userData.signature === 'ativo') {
+            console.log('[Auth] Redirecionando Aluno Ativo para dashboard');
+            navigate('/aluno/dashboard');
+          } else {
+            console.log('[Auth] Aluno Inativo - Aguardando aprovação');
+            navigate('/aguardando-aprovacao');
+          }
+        } else if (userData && (userData.role === 'admin' || userData.role === 'professor')) {
+          console.log('[Auth] Redirecionando Admin/Professor para área administrativa');
+          navigate('/setup-inicial');
+        } else {
+          console.warn('[Auth] Role desconhecida ou não definida:', userData?.role);
+          // Se não souber o que é, manda para o home ou mostra erro
+          setError('Seu usuário não possui uma função (role) definida no sistema.');
+          await supabase.auth.signOut();
+        }
+      }
+    } catch (err: any) {
+      console.error('[Auth] Erro no login:', err);
+      setError(err.message || 'E-mail ou senha incorretos.');
+    } finally {
       setIsLoading(false);
-      // Redirecionar após login bem-sucedido
-    }, 1500);
+    }
   };
 
   // Abrir modal de recuperação de senha
   const openResetModal = (e: React.MouseEvent) => {
     e.preventDefault();
+    console.log('[Auth] Abrindo modal de recuperação de senha');
     setResetEmail('');
     setResetStatus('idle');
     setIsResetModalOpen(true);
@@ -42,6 +168,7 @@ export const Login: React.FC = () => {
 
   // Fechar modal de recuperação de senha
   const closeResetModal = () => {
+    console.log('[Auth] Fechando modal de recuperação de senha');
     setIsResetModalOpen(false);
     setResetEmail('');
     setResetStatus('idle');
@@ -51,21 +178,48 @@ export const Login: React.FC = () => {
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsResetLoading(true);
+    setResetStatus('idle');
 
-    // Simulação - aqui você conectará ao backend
-    console.log('Reset password request:', { resetEmail });
+    console.log('[Auth] Iniciando recuperação de senha para:', resetEmail);
 
-    setTimeout(() => {
-      setIsResetLoading(false);
-      
-      // Simulação: sucesso se email contém @, erro caso contrário
-      // Isso será substituído pela lógica real do backend
-      if (resetEmail.includes('@') && resetEmail.length > 5) {
-        setResetStatus('success');
-      } else {
-        setResetStatus('error');
+    try {
+      // 1. Verificar se o e-mail existe usando a função RPC (ignora RLS)
+      console.log('[Database] Verificando existência do e-mail via RPC check_user_exists...');
+      const { data: exists, error: checkError } = await supabase
+        .rpc('check_user_exists', { email_to_check: resetEmail });
+
+      console.log('[Database] Resultado do RPC check_user_exists:', { exists, error: checkError });
+
+      if (checkError) {
+        console.error('[Database] Erro ao chamar RPC check_user_exists:', checkError);
+        throw checkError;
       }
-    }, 1500);
+
+      if (!exists) {
+        console.warn('[Auth] E-mail não encontrado no sistema:', resetEmail);
+        // E-mail não encontrado
+        setResetStatus('error');
+        return;
+      }
+
+      // 2. Se existe, enviar link de redefinição
+      console.log('[Auth] E-mail confirmado. Enviando link de redefinição via Supabase Auth...');
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+        redirectTo: `${window.location.origin}/redefinir-senha`,
+      });
+
+      console.log('[Auth] Resposta do resetPasswordForEmail:', { error: resetError });
+
+      if (resetError) throw resetError;
+
+      console.log('[Auth] Link de redefinição enviado com sucesso para:', resetEmail);
+      setResetStatus('success');
+    } catch (err) {
+      console.error('[Auth] Erro crítico na recuperação de senha:', err);
+      setResetStatus('error');
+    } finally {
+      setIsResetLoading(false);
+    }
   };
 
   // Tentar novamente após erro
@@ -243,6 +397,29 @@ export const Login: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Success Message */}
+                {isSuccess && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-4 bg-green-50 border border-green-200 rounded-xl text-green-600 text-sm flex items-center gap-2"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    Cadastro realizado com sucesso! Faça login para continuar.
+                  </motion.div>
+                )}
+
+                {/* Error Message */}
+                {error && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm"
+                  >
+                    {error}
+                  </motion.div>
+                )}
+
                 {/* Submit Button */}
                 <motion.button 
                   type="submit"
@@ -295,6 +472,7 @@ export const Login: React.FC = () => {
               {/* Social Login */}
               <button
                 type="button"
+                onClick={handleGoogleLogin}
                 className="w-full flex items-center justify-center gap-3 px-6 py-3.5 rounded-xl border-2 border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 transition-all duration-200 text-slate-700 font-medium group"
               >
                 <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -521,11 +699,10 @@ export const Login: React.FC = () => {
                         <XCircle className="w-8 h-8 text-red-600" />
                       </div>
                       <h3 className="text-xl font-bold text-slate-900 mb-2">
-                        E-mail não encontrado
+                        Ocorreu um erro, conte o suporte.
                       </h3>
                       <p className="text-slate-600 mb-6">
-                        Não encontramos uma conta com o e-mail <span className="font-semibold text-slate-900">{resetEmail}</span>. 
-                        Verifique se digitou corretamente ou crie uma nova conta.
+                        Não encontramos uma conta vinculada ao e-mail <span className="font-semibold text-slate-900">{resetEmail}</span>.
                       </p>
                       <div className="flex gap-3">
                         <button

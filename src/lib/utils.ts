@@ -24,3 +24,15 @@ export function formatWhatsAppLink(phone: string, message: string) {
   const encodedMessage = encodeURIComponent(message);
   return `https://wa.me/${phone}?text=${encodedMessage}`;
 }
+
+export function capitalizeWords(text: string): string {
+  if (!text) return '';
+  return text
+    .toLowerCase()
+    .split(/(\s+)/)
+    .map(part => {
+      if (part.trim().length === 0) return part;
+      return part.charAt(0).toUpperCase() + part.slice(1);
+    })
+    .join('');
+}

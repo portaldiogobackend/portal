@@ -1,10 +1,13 @@
-import { motion } from 'framer-motion';
-import { ArrowUpRight, Check, ChevronRight, Eye, EyeOff, Home, User } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import { AnimatePresence, motion } from 'framer-motion';
+import { ArrowUpRight, Check, ChevronRight, Eye, EyeOff, GraduationCap, Home, Plus, User, Users, X } from 'lucide-react';
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Footer } from '../components/layout/Footer';
 import { Header } from '../components/layout/Header';
 
 export const SignUp: React.FC = () => {
+  const navigate = useNavigate();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -14,6 +17,30 @@ export const SignUp: React.FC = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showUserTypeModal, setShowUserTypeModal] = useState(false);
+  const [userType, setUserType] = useState<'aluno' | 'pai' | null>(null);
+  const [studentEmails, setStudentEmails] = useState<string[]>(['']);
+
+  const handleGoogleLogin = async () => {
+    try {
+      console.log('[Auth] Iniciando cadastro com Google...');
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/setup-inicial`,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'select_account',
+          },
+        },
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      console.error('[Auth] Erro no cadastro com Google:', err);
+      setError(err.message || 'Erro ao conectar com Google.');
+    }
+  };
 
   // Validação de senha
   const passwordRequirements = [
@@ -26,22 +53,154 @@ export const SignUp: React.FC = () => {
   const isPasswordValid = passwordRequirements.every(req => req.valid);
   const doPasswordsMatch = password === confirmPassword && password.length > 0;
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     
     if (!isPasswordValid || !doPasswordsMatch || !acceptTerms) {
       return;
     }
     
+    // Agora apenas abrimos o modal. O cadastro real acontece no modal.
+    setShowUserTypeModal(true);
+  };
+
+  const performRegistration = async (role: 'aluno' | 'pai', studentEmailsList: string) => {
     setIsLoading(true);
+    setError(null);
     
-    // Simulação - aqui você conectará ao backend
-    console.log('SignUp attempt:', { firstName, lastName, email, password });
+    const trimmedEmail = email.trim();
+    console.log('[SignUp] Iniciando processo de cadastro para:', trimmedEmail, 'com role:', role);
     
-    setTimeout(() => {
+    try {
+      // 1. Verificar se o e-mail já existe na tbf_controle_user antes de criar no Auth
+      console.log('[Database] Verificando se e-mail já existe na tbf_controle_user...');
+      const { data: exists, error: checkError } = await supabase
+        .rpc('check_user_exists', { email_to_check: trimmedEmail });
+
+      console.log('[Database] Resultado da verificação de e-mail existente:', { exists, error: checkError });
+
+      if (checkError) throw checkError;
+
+      if (exists) {
+        console.warn('[SignUp] E-mail já cadastrado no sistema:', trimmedEmail);
+        throw new Error('Este e-mail já está cadastrado. Tente fazer login ou recuperar sua senha.');
+      }
+
+      // 2. Registrar no Supabase Auth
+      console.log('[Auth] Criando usuário no Supabase Auth...');
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: trimmedEmail,
+        password,
+        options: {
+          data: {
+            first_name: firstName,
+            last_name: lastName,
+          },
+        },
+      });
+
+      console.log('[Auth] Resposta do signUp:', { authData, error: authError });
+
+      if (authError) throw authError;
+      if (!authData.user) throw new Error('Erro ao criar usuário.');
+
+      const userId = authData.user.id;
+      console.log('[Auth] Usuário criado com ID:', userId);
+
+      // 3. Inserir ou Atualizar na tbf_controle_user (usando upsert para evitar erro de duplicidade)
+      console.log('[Database] Inserindo/Atualizando dados complementares na tbf_controle_user...');
+      const { error: dbError } = await supabase
+        .from('tbf_controle_user')
+        .upsert([{
+          id: userId,
+          nome: firstName,
+          sobrenome: lastName,
+          email: trimmedEmail,
+          signature: 'inativo',
+          role: role,
+          emailpai: '',
+          emailaluno: role === 'pai' ? studentEmailsList : ''
+        }], { onConflict: 'id' });
+
+      console.log('[Database] Resposta da inserção na tbf_controle_user:', { error: dbError });
+
+      if (dbError) throw dbError;
+
+      // 4. Inserir ou atualizar na tbf_rss (Newsletter)
+      console.log('[Database] Garantindo e-mail na tbf_rss...');
+      const { error: rssError } = await supabase
+        .from('tbf_rss')
+        .upsert(
+          { email: trimmedEmail, habilitado: true },
+          { onConflict: 'email' }
+        );
+      
+      if (rssError) {
+        console.warn('[Database] Erro ao inserir na tbf_rss (não crítico):', rssError);
+      } else {
+        console.log('[Database] E-mail registrado na tbf_rss com sucesso.');
+      }
+
+      console.log(`[SignUp] Cadastro finalizado com sucesso para ${trimmedEmail} como ${role}`);
+      
+      // Redirecionar para Login após cadastro para mostrar mensagem de sucesso
+      navigate('/login?success=signup');
+    } catch (err: any) {
+      console.error('[SignUp] Erro durante o cadastro:', err);
+      
+      // Tratamento específico para erro de envio de e-mail do Supabase
+      if (err.message === 'Error sending confirmation email' || err.status === 422) {
+        setError(
+          'Erro ao enviar e-mail de confirmação. Isso geralmente acontece quando o limite de e-mails do Supabase é atingido ou o SMTP não está configurado. ' +
+          'Para corrigir, acesse o Dashboard do Supabase > Authentication > Providers > Email e desative "Confirm Email" ou configure um serviço de SMTP (SendGrid, Resend, etc).'
+        );
+      } else {
+        setError(err.message || 'Ocorreu um erro ao realizar o cadastro.');
+      }
+    } finally {
       setIsLoading(false);
-      // Redirecionar após cadastro bem-sucedido
-    }, 1500);
+    }
+  };
+
+  const handleSelectUserType = async (type: 'aluno' | 'pai') => {
+    setError(null);
+    setUserType(type);
+    if (type === 'aluno') {
+      await performRegistration('aluno', '');
+    }
+  };
+
+  const handlePaiSubmit = async () => {
+    const validEmails = studentEmails.filter(e => e.trim() !== '');
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    
+    for (const e of validEmails) {
+      if (!emailRegex.test(e)) {
+        setError(`E-mail inválido: ${e}`);
+        return;
+      }
+    }
+
+    await performRegistration('pai', validEmails.join(', '));
+  };
+
+  const isPaiFormValid = studentEmails.some(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim()));
+
+  const addStudentEmail = () => {
+    setStudentEmails([...studentEmails, '']);
+  };
+
+  const updateStudentEmail = (index: number, value: string) => {
+    const newEmails = [...studentEmails];
+    newEmails[index] = value;
+    setStudentEmails(newEmails);
+  };
+
+  const removeStudentEmail = (index: number) => {
+    if (studentEmails.length > 1) {
+      setStudentEmails(studentEmails.filter((_, i) => i !== index));
+    }
   };
 
   return (
@@ -336,6 +495,17 @@ export const SignUp: React.FC = () => {
                   </label>
                 </div>
 
+                {/* Error Message */}
+                {error && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm"
+                  >
+                    {error}
+                  </motion.div>
+                )}
+
                 {/* Submit Button */}
                 <motion.button 
                   type="submit"
@@ -388,6 +558,7 @@ export const SignUp: React.FC = () => {
               {/* Social Login */}
               <button
                 type="button"
+                onClick={handleGoogleLogin}
                 className="w-full flex items-center justify-center gap-3 px-6 py-3.5 rounded-xl border-2 border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 transition-all duration-200 text-slate-700 font-medium group"
               >
                 <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -445,6 +616,164 @@ export const SignUp: React.FC = () => {
       </section>
 
       <Footer />
+
+      {/* User Type Modal */}
+      <AnimatePresence>
+        {showUserTypeModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden"
+            >
+              {/* Botão Sair/Fechar */}
+              <button 
+                onClick={() => setShowUserTypeModal(false)}
+                className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-all z-10"
+                aria-label="Sair"
+              >
+                <X className="w-6 h-6" />
+              </button>
+
+              <div className="p-8 lg:p-10">
+                {!userType ? (
+                  <>
+                    <div className="text-center mb-8">
+                      <h2 className="text-2xl lg:text-3xl font-bold text-slate-900 mb-3">
+                        Quase lá!
+                      </h2>
+                      <p className="text-slate-600">
+                        Como você pretende utilizar o Portal Diogo?
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4">
+                      <button
+                        onClick={() => handleSelectUserType('aluno')}
+                        disabled={isLoading}
+                        className="flex items-center gap-4 p-6 rounded-2xl border-2 border-slate-100 hover:border-blue-500 hover:bg-blue-50/50 transition-all duration-300 group text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform duration-300">
+                          {isLoading && userType === 'aluno' ? (
+                            <div className="w-6 h-6 border-2 border-blue-600/30 border-t-blue-600 rounded-full animate-spin" />
+                          ) : (
+                            <GraduationCap className="w-6 h-6" />
+                          )}
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-slate-900">Sou Aluno</h3>
+                          <p className="text-sm text-slate-500">Quero acessar meus cursos e materiais</p>
+                        </div>
+                      </button>
+
+                      <button
+                        onClick={() => handleSelectUserType('pai')}
+                        disabled={isLoading}
+                        className="flex items-center gap-4 p-6 rounded-2xl border-2 border-slate-100 hover:border-blue-500 hover:bg-blue-50/50 transition-all duration-300 group text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center text-purple-600 group-hover:scale-110 transition-transform duration-300">
+                          <Users className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-slate-900">Sou Pai/Responsável</h3>
+                          <p className="text-sm text-slate-500">Quero acompanhar o progresso dos meus filhos</p>
+                        </div>
+                      </button>
+
+                      {error && (
+                        <motion.div 
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm"
+                        >
+                          {error}
+                        </motion.div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="mb-8">
+                      <button 
+                        onClick={() => {
+                          setUserType(null);
+                          setError(null);
+                        }}
+                        className="text-slate-400 hover:text-slate-600 mb-4 flex items-center gap-1 text-sm font-medium transition-colors"
+                      >
+                        <X className="w-4 h-4" /> Voltar
+                      </button>
+                      <h2 className="text-2xl font-bold text-slate-900 mb-2">
+                        Vincular Alunos
+                      </h2>
+                      <p className="text-slate-600 text-sm">
+                        Insira os e-mails dos alunos que você deseja acompanhar.
+                      </p>
+                    </div>
+
+                    <div className="space-y-4">
+                      {studentEmails.map((email, index) => (
+                        <div key={index} className="flex gap-2">
+                          <input
+                            type="email"
+                            value={email}
+                            onChange={(e) => updateStudentEmail(index, e.target.value)}
+                            placeholder="email@doaluno.com"
+                            className="flex-1 px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-blue-500 focus:outline-none transition-all"
+                          />
+                          {studentEmails.length > 1 && (
+                            <button
+                              onClick={() => removeStudentEmail(index)}
+                              className="p-3 text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                            >
+                              <X className="w-5 h-5" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+
+                      <button
+                        onClick={addStudentEmail}
+                        className="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-slate-500 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50 transition-all flex items-center justify-center gap-2 font-medium"
+                      >
+                        <Plus className="w-4 h-4" /> Adicionar outro aluno
+                      </button>
+
+                      {error && (
+                        <p className="text-sm text-red-500">{error}</p>
+                      )}
+
+                      <button
+                        onClick={handlePaiSubmit}
+                        disabled={isLoading || !isPaiFormValid}
+                        className={`w-full mt-6 text-white font-bold py-4 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 ${
+                          isLoading || !isPaiFormValid 
+                            ? 'bg-slate-400 cursor-not-allowed shadow-none' 
+                            : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20'
+                        }`}
+                      >
+                        {isLoading ? (
+                          <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        ) : (
+                          <>Confirmar e Finalizar</>
+                        )}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

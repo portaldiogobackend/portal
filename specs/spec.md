@@ -414,6 +414,62 @@ This feature implements an institutional landing page for Diogo Spera's educatio
 
 ---
 
+## Database Schema
+
+### New Tables (Feature 001)
+
+These tables are defined in `data-model.md` and support the landing page features.
+
+```sql
+-- 1. Testimonials
+CREATE TABLE testimonials (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  student_name VARCHAR(100) NOT NULL,
+  photo_url TEXT NOT NULL,
+  grade_before DECIMAL(3,1) NOT NULL,
+  grade_after DECIMAL(3,1) NOT NULL,
+  subject VARCHAR(50) NOT NULL,
+  quote TEXT NOT NULL CHECK (length(quote) <= 150),
+  display_order INTEGER NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 2. Pricing Gate Leads
+CREATE TABLE pricing_gate_leads (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name VARCHAR(100) NOT NULL,
+  whatsapp VARCHAR(20) NOT NULL,
+  source VARCHAR(50) DEFAULT 'pricing_gate',
+  timestamp TIMESTAMPTZ DEFAULT now()
+);
+
+-- 3. Ebook Leads
+CREATE TABLE ebook_leads (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name VARCHAR(100) NOT NULL,
+  email VARCHAR(255) NOT NULL,
+  whatsapp VARCHAR(20) NOT NULL,
+  consented_privacy BOOLEAN NOT NULL DEFAULT false,
+  timestamp TIMESTAMPTZ DEFAULT now()
+);
+```
+
+### Existing Tables (Reference)
+
+The following tables exist in the current Supabase project and serve the student portal:
+
+- **`tbf_controle_user`**: Main user table (Students/Admins). Contains profile data like `emailpai`, `emailaluno`, `signature`.
+- **`tbf_mensagens`**: Stores contact messages.
+- **`tbf_rss`**: Newsletter email storage.
+- **`tbf_materias`**: Subjects/Disciplines definitions.
+- **`tbf_duvidas`**: Student questions/doubts.
+- **`tbf_serie`**: School series/grades definitions.
+- **`tbf_temas`**: Content themes.
+- **`audit_logs`**: Administrative action logs.
+
+---
+
 ## Constraints
 
 ### Business Constraints

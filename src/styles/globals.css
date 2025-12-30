@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
 @import "swiper/css";
 @import "swiper/css/pagination";
 @import "swiper/css/navigation";
@@ -28,11 +28,20 @@
 
     --font-heading: "Inter", system-ui, sans-serif;
   }
+
+  body {
+    @apply bg-background text-foreground;
+  }
 }
 
 @theme {
   --font-heading: var(--font-heading);
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-primary: hsl(var(--primary));
   --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
   --color-accent: hsl(var(--accent));
   --color-accent-foreground: hsl(var(--accent-foreground));
   --color-brand-blue: hsl(var(--brand-blue));
@@ -45,24 +54,46 @@
 
 @layer utilities {
   .gradient-hero {
-    background: radial-gradient(circle at top right, rgba(30, 58, 138, 0.4), transparent),
-                radial-gradient(circle at bottom left, rgba(88, 28, 135, 0.4), transparent),
-                hsl(222.2, 84%, 4.9%);
+    background: radial-gradient(
+        circle at top right,
+        rgba(30, 58, 138, 0.1),
+        transparent
+      ),
+      radial-gradient(
+        circle at bottom left,
+        rgba(88, 28, 135, 0.1),
+        transparent
+      ),
+      hsl(0, 0%, 100%);
   }
 
   @keyframes rotation {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   @keyframes scalation {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.1); }
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.1);
+    }
   }
 
   @keyframes walking {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-20px); }
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-20px);
+    }
   }
 
   .animate-rotation {
