@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { ChevronLeft, Menu, Plus, Minus, ClipboardList, Pencil, Trash2, Filter, ArrowUpDown, Search, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
 import { Sidebar } from '../components/layout/Sidebar';
 import { LogoutModal } from '../components/layout/LogoutModal';
 import { supabase } from '@/lib/supabase';
@@ -60,6 +62,35 @@ const SERIES_ORDER = [
   'Terceiro Ano Ensino Médio',
   'Outros'
 ];
+
+const modules = {
+  toolbar: [
+    [{ 'header': [1, 2, false] }],
+    ['bold', 'italic', 'underline', 'strike', 'blockquote'],
+    [{'list': 'ordered'}, {'list': 'bullet'}, {'indent': '-1'}, {'indent': '+1'}],
+    ['link', 'image'],
+    [{ 'script': 'sub'}, { 'script': 'super' }],
+    [{ 'color': [] }, { 'background': [] }],
+    [{ 'align': [] }],
+    ['clean']
+  ],
+};
+
+const formats = [
+  'header',
+  'bold', 'italic', 'underline', 'strike', 'blockquote',
+  'list', 'bullet', 'indent',
+  'link', 'image',
+  'script',
+  'color', 'background',
+  'align'
+];
+
+const stripHtml = (html: string) => {
+  if (!html) return '';
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  return doc.body.textContent || "";
+};
 
 export default function AdminTestes() {
   const navigate = useNavigate();
@@ -300,7 +331,7 @@ export default function AdminTestes() {
     if (reportSearchTerm) {
       const searchLower = reportSearchTerm.toLowerCase();
       result = result.filter(teste => 
-        teste.pergunta?.toLowerCase().includes(searchLower)
+        stripHtml(teste.pergunta || '').toLowerCase().includes(searchLower)
       );
     }
 
@@ -537,7 +568,7 @@ export default function AdminTestes() {
       showToast('Selecione pelo menos uma série.', 'error');
       return;
     }
-    if (!formData.pergunta.trim()) {
+    if (!stripHtml(formData.pergunta).trim()) {
       showToast('Digite a pergunta.', 'error');
       return;
     }
@@ -902,8 +933,8 @@ export default function AdminTestes() {
                             <td className="py-4 px-4 text-sm font-medium text-gray-600 max-w-[150px] truncate" title={serieNames}>
                               {serieNames || '-'}
                             </td>
-                            <td className="py-4 px-4 text-sm font-medium text-gray-600 max-w-[300px] truncate" title={teste.pergunta}>
-                              {teste.pergunta}
+                            <td className="py-4 px-4 text-sm font-medium text-gray-600 max-w-[300px] truncate" title={stripHtml(teste.pergunta)}>
+                              {stripHtml(teste.pergunta)}
                             </td>
                             <td className="py-4 px-4 text-sm font-bold text-[#4318FF] text-center">
                               {teste.resposta}
@@ -1019,13 +1050,17 @@ export default function AdminTestes() {
             {/* Pergunta */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700">Pergunta *</label>
-              <textarea
-                value={formData.pergunta}
-                onChange={(e) => setFormData(prev => ({ ...prev, pergunta: e.target.value }))}
-                placeholder="Digite a pergunta do teste..."
-                rows={4}
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none resize-none"
-              />
+              <div className="bg-white">
+                <ReactQuill
+                  theme="snow"
+                  value={formData.pergunta}
+                  onChange={(value) => setFormData(prev => ({ ...prev, pergunta: value }))}
+                  modules={modules}
+                  formats={formats}
+                  placeholder="Digite a pergunta do teste..."
+                  className="bg-white"
+                />
+              </div>
             </div>
 
             {/* Alternativas */}
@@ -1094,13 +1129,17 @@ export default function AdminTestes() {
             {/* Justificativa */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700">Justificativa</label>
-              <textarea
-                value={formData.justificativa}
-                onChange={(e) => setFormData(prev => ({ ...prev, justificativa: e.target.value }))}
-                placeholder="Explique por que esta é a resposta correta (opcional)..."
-                rows={3}
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none resize-none"
-              />
+              <div className="bg-white">
+                <ReactQuill
+                  theme="snow"
+                  value={formData.justificativa}
+                  onChange={(value) => setFormData(prev => ({ ...prev, justificativa: value }))}
+                  modules={modules}
+                  formats={formats}
+                  placeholder="Explique por que esta é a resposta correta (opcional)..."
+                  className="bg-white"
+                />
+              </div>
             </div>
 
             {/* Buttons */}

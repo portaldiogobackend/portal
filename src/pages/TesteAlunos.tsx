@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import DOMPurify from 'dompurify';
+import he from 'he';
 import { supabase } from '@/lib/supabase';
 import { StudentSidebar } from '../components/layout/StudentSidebar';
 import { LogoutModal } from '../components/layout/LogoutModal';
@@ -64,6 +66,12 @@ export const TesteAlunos: React.FC = () => {
   const [filterMateria, setFilterMateria] = useState<string>('');
   const [filterTema, setFilterTema] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+
+  const decodeAndSanitize = (html: string) => {
+    if (!html) return '';
+    const decoded = he.decode(html);
+    return DOMPurify.sanitize(decoded);
+  };
 
   useEffect(() => {
     fetchData();
@@ -302,7 +310,7 @@ export const TesteAlunos: React.FC = () => {
                       className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border-none rounded-xl text-sm font-medium text-gray-700 focus:ring-2 focus:ring-[#4318FF]/20 cursor-pointer hover:bg-gray-100 transition-colors appearance-none"
                     >
                       <option value="">Todas as Matérias</option>
-                      {availableMaterias.map(m => <option key={m.id} value={m.id}>{m.materia}</option>)}
+                      {materias.map(m => <option key={m.id} value={m.id}>{m.materia}</option>)}
                     </select>
                   </div>
 
@@ -314,7 +322,7 @@ export const TesteAlunos: React.FC = () => {
                       className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border-none rounded-xl text-sm font-medium text-gray-700 focus:ring-2 focus:ring-[#4318FF]/20 cursor-pointer hover:bg-gray-100 transition-colors appearance-none"
                     >
                       <option value="">Todos os Temas</option>
-                      {availableTemas.map(t => <option key={t.id} value={t.id}>{t.nometema}</option>)}
+                      {temas.map(t => <option key={t.id} value={t.id}>{t.nometema}</option>)}
                     </select>
                   </div>
                 </div>
@@ -346,9 +354,10 @@ export const TesteAlunos: React.FC = () => {
                   )}
                 </div>
 
-                <h2 className="text-xl font-bold text-[#1B2559] mb-8 leading-relaxed">
-                  {selectedTeste.pergunta}
-                </h2>
+                <div 
+                  className="text-xl font-bold text-[#1B2559] mb-8 leading-relaxed"
+                  dangerouslySetInnerHTML={{ __html: decodeAndSanitize(selectedTeste.pergunta) }}
+                />
 
                 <div className="space-y-4 mb-8">
                   {selectedTeste.alternativa.split(';').map((alt, index) => {
@@ -401,9 +410,10 @@ export const TesteAlunos: React.FC = () => {
                       <AlertCircle size={18} />
                       Justificativa
                     </h4>
-                    <p className="text-blue-700 text-sm leading-relaxed">
-                      {selectedTeste.justificativa}
-                    </p>
+                    <div 
+                      className="text-blue-700 text-sm leading-relaxed"
+                      dangerouslySetInnerHTML={{ __html: decodeAndSanitize(selectedTeste.justificativa || '') }}
+                    />
                   </div>
                 )}
 
@@ -475,9 +485,10 @@ export const TesteAlunos: React.FC = () => {
                             </div>
                           </div>
 
-                          <h3 className="font-bold text-[#1B2559] text-base md:text-lg line-clamp-1 group-hover:text-[#4318FF] transition-colors">
-                            {teste.pergunta}
-                          </h3>
+                          <div 
+                            className="font-bold text-[#1B2559] text-base md:text-lg line-clamp-1 group-hover:text-[#4318FF] transition-colors [&_*]:inline"
+                            dangerouslySetInnerHTML={{ __html: decodeAndSanitize(teste.pergunta) }}
+                          />
                         </div>
 
                         <div className="flex-shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-gray-50 md:pl-4 md:border-l md:border-gray-100 flex justify-end">
