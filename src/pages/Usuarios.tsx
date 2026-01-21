@@ -129,6 +129,7 @@ const Usuarios: React.FC = () => {
           .eq('id', user.id)
           .single();
 
+        if (error) throw error;
         if (data?.nome) {
           setUserName(data.nome.split(' ')[0]);
         }

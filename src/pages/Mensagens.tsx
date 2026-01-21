@@ -8,13 +8,12 @@ import {
   Filter,
   X,
   Calendar,
-  User,
   Mail,
   Phone,
-  MessageCircle,
   CheckCircle2,
   Clock,
   Menu,
+  Shield,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Sidebar } from "../components/layout/Sidebar";

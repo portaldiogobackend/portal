@@ -3,7 +3,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Spinner } from '@/components/ui/Spinner';
 import { Toast, type ToastType } from '@/components/ui/Toast';
 import { supabase } from '@/lib/supabase';
-import { ArrowUpDown, ChevronLeft, ClipboardList, FileText, Filter, Menu, Minus, Pencil, Plus, Search, Trash2, Upload, X } from 'lucide-react';
+import { AlertTriangle, ArrowUpDown, ChevronLeft, ClipboardList, FileText, Filter, Menu, Minus, Pencil, Plus, Search, Trash2, Upload, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';

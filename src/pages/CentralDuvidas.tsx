@@ -337,7 +337,7 @@ export const CentralDuvidas: React.FC = () => {
         onConfirm={confirmDelete}
         title="Excluir Dúvida"
         message="Tem certeza que deseja excluir esta dúvida? Esta ação não pode ser desfeita."
-        isLoading={isDeleting}
+        loading={isDeleting}
       />
 
       {toast && (

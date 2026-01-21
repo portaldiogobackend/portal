@@ -9,7 +9,6 @@ import { supabase } from '@/lib/supabase';
 import { capitalizeWords } from '@/lib/utils';
 import { ArrowUpDown, Edit2, Filter, Menu, Plus, Search, Trash2, X } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
 
 interface Tema {
@@ -72,7 +71,6 @@ const MultiSelect = ({
 );
 
 export const Temas: React.FC = () => {
-  const navigate = useNavigate();
   const [temas, setTemas] = useState<Tema[]>([]);
   const [materias, setMaterias] = useState<Materia[]>([]);
   const [series, setSeries] = useState<Serie[]>([]);

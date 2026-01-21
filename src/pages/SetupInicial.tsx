@@ -2,7 +2,6 @@ import { supabase } from '@/lib/supabase';
 import {
   Bell,
   BookOpen,
-  ChevronLeft,
   LayoutDashboard,
   MessageSquare,
   Search,

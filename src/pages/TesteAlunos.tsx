@@ -11,7 +11,6 @@ import {
   Clock, 
   FileCheck,
   AlertCircle,
-  ChevronRight,
   ChevronLeft,
   Filter,
   Menu
@@ -83,6 +82,7 @@ export const TesteAlunos: React.FC = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
+      setError(null);
       
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -130,6 +130,7 @@ export const TesteAlunos: React.FC = () => {
 
     } catch (error) {
       console.error('Error fetching data:', error);
+      setError('Erro ao carregar testes.');
       setToast({ message: 'Erro ao carregar testes.', type: 'error' });
     } finally {
       setLoading(false);
@@ -226,7 +227,7 @@ export const TesteAlunos: React.FC = () => {
     });
   });
 
-  const getCardFooter = (teste: Teste, isDone: boolean, status: string) => {
+  const getCardFooter = (teste: Teste, isDone: boolean) => {
     if (!isDone) {
       return (
         <button
@@ -526,7 +527,7 @@ export const TesteAlunos: React.FC = () => {
                         </div>
 
                         <div className="flex-shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-gray-50 md:pl-4 md:border-l md:border-gray-100 flex justify-end">
-                          {getCardFooter(teste, isDone, status)}
+                          {getCardFooter(teste, isDone)}
                         </div>
                       </div>
                     );

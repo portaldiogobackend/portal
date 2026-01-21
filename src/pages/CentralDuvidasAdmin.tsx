@@ -25,6 +25,13 @@ interface Duvida {
   aluno_serie?: string;
 }
 
+type UserWithSerie = {
+  id: string;
+  nome: string;
+  sobrenome?: string | null;
+  tbf_serie?: { serie: string | null } | { serie: string | null }[] | null;
+};
+
 export const CentralDuvidasAdmin: React.FC = () => {
   const navigate = useNavigate();
   const [duvidas, setDuvidas] = useState<Duvida[]>([]);
@@ -82,10 +89,13 @@ export const CentralDuvidasAdmin: React.FC = () => {
       const { data: usersData } = await supabase.from('tbf_controle_user').select('id, nome, sobrenome, serie, tbf_serie(serie)');
       
       const materiasMap = new Map(materiasData?.map(m => [m.id, m.materia]));
-      const usersMap = new Map(usersData?.map(u => [u.id, { 
-        nome: capitalizeWords(`${u.nome} ${u.sobrenome || ''}`.trim()), 
-        serie: u.tbf_serie?.serie || '' 
-      }]));
+      const usersMap = new Map((usersData as UserWithSerie[] | null | undefined)?.map(u => {
+        const serieValue = Array.isArray(u.tbf_serie) ? u.tbf_serie[0]?.serie : u.tbf_serie?.serie;
+        return [u.id, { 
+          nome: capitalizeWords(`${u.nome} ${u.sobrenome || ''}`.trim()), 
+          serie: serieValue || '' 
+        }];
+      }) || []);
 
       const formattedDuvidas = duvidasData.map(d => {
         const user = usersMap.get(d.idaluno);
@@ -219,20 +229,25 @@ export const CentralDuvidasAdmin: React.FC = () => {
                     Nenhuma dúvida encontrada.
                   </div>
                 ) : (
-                  duvidas.map((duvida) => (
-                    <div 
-                      key={duvida.id} 
-                      className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow"
-                    >
-                      <div className="flex flex-col md:flex-row gap-6 justify-between">
-                        <div className="flex-1 space-y-3">
-                          <div className="flex justify-end items-center gap-3 mb-2">
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#0061FF] to-[#422AFB] flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-blue-200 uppercase flex-shrink-0">
-                              {duvida.aluno_nome?.charAt(0)}
-                              {duvida.aluno_nome?.split(' ').length > 1 ? duvida.aluno_nome?.split(' ').pop()?.charAt(0) : ''}
+                  duvidas.map((duvida) => {
+                    const nomeParts = (duvida.aluno_nome || '').split(' ').filter(Boolean);
+                    const initials = nomeParts.length > 1
+                      ? `${nomeParts[0].charAt(0)}${nomeParts[nomeParts.length - 1].charAt(0)}`
+                      : nomeParts[0]?.charAt(0) || '';
+
+                    return (
+                      <div 
+                        key={duvida.id} 
+                        className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow"
+                      >
+                        <div className="flex flex-col md:flex-row gap-6 justify-between">
+                          <div className="flex-1 space-y-3">
+                            <div className="flex justify-end items-center gap-3 mb-2">
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#0061FF] to-[#422AFB] flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-blue-200 uppercase flex-shrink-0">
+                                {initials}
+                              </div>
+                              <span className="font-medium text-gray-700">{duvida.aluno_nome}</span>
                             </div>
-                            <span className="font-medium text-gray-700">{duvida.aluno_nome}</span>
-                          </div>
                           <div className="flex items-center gap-3 text-sm text-gray-500 mb-2">
                             <span className="bg-gray-100 px-3 py-1 rounded-full font-medium text-gray-700">
                               {duvida.materia_nome}
@@ -287,7 +302,8 @@ export const CentralDuvidasAdmin: React.FC = () => {
                         </div>
                       </div>
                     </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             )}

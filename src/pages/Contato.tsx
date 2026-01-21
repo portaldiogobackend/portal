@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { AnimatePresence, motion } from 'framer-motion';
+import type { Variants } from 'framer-motion';
 import { ArrowUpRight, BookOpen, CheckCircle, ChevronRight, Home, Mail, MapPin, MessageSquare, Phone, Send, Star, User, XCircle } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import { CertificateSection } from '../components/features/CertificateSection';
@@ -13,7 +14,7 @@ import 'altcha/i18n/pt-br';
 // Tipos para o estado do formulário
 type FormStatus = 'idle' | 'loading' | 'success' | 'error';
 
-const bounceIn = {
+const bounceIn: Variants = {
   hidden: { opacity: 0, scale: 0.3 },
   visible: {
     opacity: 1,
