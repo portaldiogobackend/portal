@@ -52,32 +52,29 @@ export const SetupInicial: React.FC = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
          const { data: userData } = await supabase.from('tbf_controle_user').select('nome, sobrenome').eq('id', user.id).single();
-         if (userData) {
+         if (userData?.nome) {
             setUserName(userData.nome.split(' ')[0]);
-            const first = userData.nome ? userData.nome.charAt(0) : 'A';
+            const first = userData.nome.charAt(0);
             const last = userData.sobrenome ? userData.sobrenome.charAt(0) : 'D';
             setUserInitials(`${first}${last}`.toUpperCase());
          }
       }
 
       // 2. KPIs
-      const [
-        { count: students },
-        { count: testes },
-        { count: materias },
-        { count: temas }
-      ] = await Promise.all([
-        supabase.from('tbf_controle_user').select('*', { count: 'exact', head: true }).eq('role', 'aluno'),
-        supabase.from('tbf_testes').select('*', { count: 'exact', head: true }),
-        supabase.from('tbf_materias').select('*', { count: 'exact', head: true }),
-        supabase.from('tbf_temas').select('*', { count: 'exact', head: true })
+      const results = await Promise.all([
+        supabase.from('tbf_controle_user').select('id', { count: 'exact', head: true }).eq('role', 'aluno'),
+        supabase.from('tbf_testes').select('id', { count: 'exact', head: true }),
+        supabase.from('tbf_materias').select('id', { count: 'exact', head: true }),
+        supabase.from('tbf_temas').select('id', { count: 'exact', head: true })
       ]);
 
+      const [studentsRes, testesRes, materiasRes, temasRes] = results;
+
       setStats({
-        students: students || 0,
-        testes: testes || 0,
-        materias: materias || 0,
-        temas: temas || 0
+        students: studentsRes.count || 0,
+        testes: testesRes.count || 0,
+        materias: materiasRes.count || 0,
+        temas: temasRes.count || 0
       });
 
       // 3. Recent Users

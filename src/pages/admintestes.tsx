@@ -1,15 +1,15 @@
-import { useState, useEffect, useMemo } from 'react';
-import { ChevronLeft, Menu, Plus, Minus, ClipboardList, Pencil, Trash2, Filter, ArrowUpDown, Search, X } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Button } from '@/components/ui/Button';
+import { Modal } from '@/components/ui/Modal';
+import { Spinner } from '@/components/ui/Spinner';
+import { Toast, type ToastType } from '@/components/ui/Toast';
+import { supabase } from '@/lib/supabase';
+import { ArrowUpDown, ChevronLeft, ClipboardList, FileText, Filter, Menu, Minus, Pencil, Plus, Search, Trash2, Upload, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
-import { Sidebar } from '../components/layout/Sidebar';
+import { useNavigate } from 'react-router-dom';
 import { LogoutModal } from '../components/layout/LogoutModal';
-import { supabase } from '@/lib/supabase';
-import { Modal } from '@/components/ui/Modal';
-import { Button } from '@/components/ui/Button';
-import { Toast, type ToastType } from '@/components/ui/Toast';
-import { Spinner } from '@/components/ui/Spinner';
+import { Sidebar } from '../components/layout/Sidebar';
 
 // Interfaces
 interface Materia {
@@ -79,7 +79,7 @@ const modules = {
 const formats = [
   'header',
   'bold', 'italic', 'underline', 'strike', 'blockquote',
-  'list', 'bullet', 'indent',
+  'list', 'indent',
   'link', 'image',
   'script',
   'color', 'background',
@@ -118,8 +118,13 @@ export default function AdminTestes() {
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isTemaModalOpen, setIsTemaModalOpen] = useState(false);
+  const [isMassiveModalOpen, setIsMassiveModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingTema, setSavingTema] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [massiveFile, setMassiveFile] = useState<File | null>(null);
+  const [importLog, setImportLog] = useState<{ success: number; errors: string[] } | null>(null);
+  const [temaModalSource, setTemaModalSource] = useState<'individual' | 'massive'>('individual');
 
   // Form state
   const [formData, setFormData] = useState({
@@ -132,6 +137,14 @@ export default function AdminTestes() {
     alternativas: ['', '', '', ''] as string[],
     resposta: 1,
     justificativa: ''
+  });
+
+  // Massive Form state (Common fields)
+  const [massiveFormData, setMassiveFormData] = useState({
+    idmat: [] as string[],
+    idseries: [] as string[],
+    idtema: [] as string[],
+    idalunos: [] as string[]
   });
 
   // Tema Form state
@@ -161,7 +174,7 @@ export default function AdminTestes() {
           .eq('id', user.id)
           .single();
 
-        if (data) {
+        if (data?.nome) {
           setUserName(data.nome.split(' ')[0]);
         }
       }
@@ -239,6 +252,21 @@ export default function AdminTestes() {
     });
   }, [temas, formData.idmat, formData.idseries]);
 
+  // Filter temas for Massive Upload
+  const filteredTemasMassive = useMemo(() => {
+    if (massiveFormData.idmat.length === 0 && massiveFormData.idseries.length === 0) {
+      return temas;
+    }
+    
+    return temas.filter(tema => {
+      const matchesMateria = massiveFormData.idmat.length === 0 || 
+        massiveFormData.idmat.some(matId => tema.idmat?.includes(matId));
+      const matchesSerie = massiveFormData.idseries.length === 0 || 
+        massiveFormData.idseries.some(serieId => tema.idseries?.includes(serieId));
+      return matchesMateria && matchesSerie;
+    });
+  }, [temas, massiveFormData.idmat, massiveFormData.idseries]);
+
   // Helper function to capitalize first letter of each word
   const capitalizeWords = (str: string) => {
     if (!str) return '';
@@ -270,6 +298,28 @@ export default function AdminTestes() {
       return nameA.localeCompare(nameB, 'pt-BR');
     });
   }, [alunos, formData.idmat, formData.idseries]);
+
+  // Filter and sort alunos for Massive Upload
+  const filteredAlunosMassive = useMemo(() => {
+    let result = alunos;
+    
+    if (massiveFormData.idmat.length > 0 || massiveFormData.idseries.length > 0) {
+      result = alunos.filter(aluno => {
+        const matchesMateria = massiveFormData.idmat.length === 0 || 
+          massiveFormData.idmat.some(matId => aluno.materias?.includes(matId));
+        const matchesSerie = massiveFormData.idseries.length === 0 || 
+          massiveFormData.idseries.includes(aluno.serie);
+        return matchesMateria && matchesSerie;
+      });
+    }
+
+    // Sort alphabetically by full name
+    return [...result].sort((a, b) => {
+      const nameA = `${a.nome} ${a.sobrenome}`.toLowerCase();
+      const nameB = `${b.nome} ${b.sobrenome}`.toLowerCase();
+      return nameA.localeCompare(nameB, 'pt-BR');
+    });
+  }, [alunos, massiveFormData.idmat, massiveFormData.idseries]);
 
   // Helper to get names from IDs for sorting
   const getTesteNamesForSort = (teste: Teste, type: 'materia' | 'tema' | 'serie') => {
@@ -400,11 +450,14 @@ export default function AdminTestes() {
     });
   };
 
-  const openTemaModal = () => {
+  const openTemaModal = (source: 'individual' | 'massive' = 'individual') => {
+    setTemaModalSource(source);
+    const sourceData = source === 'individual' ? formData : massiveFormData;
+    
     setTemaFormData({
       nometema: '',
-      idmat: [...formData.idmat], // Pré-preencher com o que já foi selecionado no form principal
-      idseries: [...formData.idseries]
+      idmat: [...sourceData.idmat],
+      idseries: [...sourceData.idseries]
     });
     setIsTemaModalOpen(true);
   };
@@ -416,6 +469,173 @@ export default function AdminTestes() {
       idmat: [],
       idseries: []
     });
+  };
+
+  const openMassiveModal = () => {
+    setMassiveFormData({
+      idmat: [],
+      idseries: [],
+      idtema: [],
+      idalunos: []
+    });
+    setMassiveFile(null);
+    setImportLog(null);
+    setIsMassiveModalOpen(true);
+  };
+
+  const closeMassiveModal = () => {
+    setIsMassiveModalOpen(false);
+    setMassiveFormData({
+      idmat: [],
+      idseries: [],
+      idtema: [],
+      idalunos: []
+    });
+    setMassiveFile(null);
+    setImportLog(null);
+  };
+
+  const toggleMassiveSelection = (id: string, field: 'idmat' | 'idseries' | 'idtema' | 'idalunos') => {
+    setMassiveFormData(prev => {
+      const current = prev[field];
+      const exists = current.includes(id);
+      const newValue = exists 
+        ? current.filter(item => item !== id)
+        : [...current, id];
+      
+      // Clear dependent fields when materia or serie changes
+      if (field === 'idmat' || field === 'idseries') {
+        return { 
+          ...prev, 
+          [field]: newValue,
+          idtema: [],
+          idalunos: []
+        };
+      }
+      
+      return { ...prev, [field]: newValue };
+    });
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      if (file.name.endsWith('.txt')) {
+        setMassiveFile(file);
+        setImportLog(null);
+      } else {
+        showToast('Por favor, selecione um arquivo .txt', 'error');
+        e.target.value = '';
+      }
+    }
+  };
+
+  const handleMassiveSubmit = async () => {
+    // Validation
+    if (massiveFormData.idmat.length === 0) {
+      showToast('Selecione pelo menos uma matéria.', 'error');
+      return;
+    }
+    if (massiveFormData.idseries.length === 0) {
+      showToast('Selecione pelo menos uma série.', 'error');
+      return;
+    }
+    if (!massiveFile) {
+      showToast('Selecione um arquivo .txt para importar.', 'error');
+      return;
+    }
+
+    setImporting(true);
+    setImportLog(null);
+    
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const text = e.target?.result as string;
+      if (!text) {
+        showToast('Arquivo vazio ou inválido.', 'error');
+        setImporting(false);
+        return;
+      }
+
+      const lines = text.split('\n').filter(line => line.trim() !== '');
+      let successCount = 0;
+      const errors: string[] = [];
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const parts = line.split('|');
+
+        if (parts.length < 4) {
+          errors.push(`Linha ${i + 1}: Formato inválido. Esperado 4 colunas.`);
+          continue;
+        }
+
+        const pergunta = parts[0].trim();
+        const alternativas = parts[1].trim();
+        const respostaStr = parts[2].trim();
+        const justificativa = parts[3].trim();
+
+        if (!pergunta || !alternativas || !respostaStr) {
+          errors.push(`Linha ${i + 1}: Campos obrigatórios faltando.`);
+          continue;
+        }
+
+        const resposta = parseInt(respostaStr);
+        if (isNaN(resposta) || resposta < 1 || resposta > 10) {
+           errors.push(`Linha ${i + 1}: Resposta deve ser um número entre 1 e 10.`);
+           continue;
+        }
+
+        const alts = alternativas.split(';').filter(a => a.trim() !== '');
+        if (alts.length < 2) {
+          errors.push(`Linha ${i + 1}: Mínimo de 2 alternativas necessárias.`);
+          continue;
+        }
+
+        // Insert into Supabase
+        try {
+          const { error } = await supabase
+            .from('tbf_testes')
+            .insert([{
+              idmat: massiveFormData.idmat,
+              idseries: massiveFormData.idseries,
+              idtema: massiveFormData.idtema,
+              idalunos: massiveFormData.idalunos,
+              pergunta,
+              alternativa: alternativas,
+              resposta,
+              justificativa
+            }]);
+
+          if (error) throw error;
+          successCount++;
+        } catch (err: any) {
+          console.error(`Error importing line ${i + 1}:`, err);
+          errors.push(`Linha ${i + 1}: Erro ao salvar no banco - ${err.message}`);
+        }
+      }
+
+      setImporting(false);
+      setImportLog({ success: successCount, errors });
+      
+      if (successCount > 0) {
+        showToast(`${successCount} testes importados com sucesso!`, 'success');
+        // Refresh list
+        fetchInitialData();
+        if (errors.length === 0) {
+          closeMassiveModal();
+        }
+      } else {
+        showToast('Nenhum teste foi importado. Verifique os erros.', 'error');
+      }
+    };
+
+    reader.onerror = () => {
+      showToast('Erro ao ler o arquivo.', 'error');
+      setImporting(false);
+    };
+
+    reader.readAsText(massiveFile, 'UTF-8');
   };
 
   const handleSaveTema = async () => {
@@ -451,11 +671,18 @@ export default function AdminTestes() {
       // Atualizar lista de temas localmente
       setTemas(prev => [...prev, data].sort((a, b) => a.nometema.localeCompare(b.nometema)));
       
-      // Selecionar o novo tema no form principal
-      setFormData(prev => ({
-        ...prev,
-        idtema: [data.id]
-      }));
+      // Selecionar o novo tema no form correto
+      if (temaModalSource === 'individual') {
+        setFormData(prev => ({
+          ...prev,
+          idtema: [data.id]
+        }));
+      } else {
+        setMassiveFormData(prev => ({
+          ...prev,
+          idtema: [data.id]
+        }));
+      }
       
       closeTemaModal();
     } catch (error) {
@@ -464,6 +691,54 @@ export default function AdminTestes() {
     } finally {
       setSavingTema(false);
     }
+  };
+
+  const handleToggleAll = (items: any[], field: 'idmat' | 'idseries' | 'idtema' | 'idalunos') => {
+    setFormData(prev => {
+      const itemIds = items.map(i => i.id);
+      const current = prev[field];
+      const allSelected = items.length > 0 && items.every(item => current.includes(item.id));
+      const isMateriaOrSerie = field === 'idmat' || field === 'idseries';
+      
+      if (allSelected) {
+        return {
+          ...prev,
+          [field]: current.filter(id => !itemIds.includes(id)),
+          ...(isMateriaOrSerie ? { idtema: [], idalunos: [] } : {})
+        };
+      } else {
+        const newSelection = [...new Set([...current, ...itemIds])];
+        return {
+          ...prev,
+          [field]: newSelection,
+          ...(isMateriaOrSerie ? { idtema: [], idalunos: [] } : {})
+        };
+      }
+    });
+  };
+
+  const handleMassiveToggleAll = (items: any[], field: 'idmat' | 'idseries' | 'idtema' | 'idalunos') => {
+    setMassiveFormData(prev => {
+      const itemIds = items.map(i => i.id);
+      const current = prev[field];
+      const allSelected = items.length > 0 && items.every(item => current.includes(item.id));
+      const isMateriaOrSerie = field === 'idmat' || field === 'idseries';
+      
+      if (allSelected) {
+        return {
+          ...prev,
+          [field]: current.filter(id => !itemIds.includes(id)),
+          ...(isMateriaOrSerie ? { idtema: [], idalunos: [] } : {})
+        };
+      } else {
+        const newSelection = [...new Set([...current, ...itemIds])];
+        return {
+          ...prev,
+          [field]: newSelection,
+          ...(isMateriaOrSerie ? { idtema: [], idalunos: [] } : {})
+        };
+      }
+    });
   };
 
   const toggleSelection = (id: string, field: 'idmat' | 'idseries' | 'idtema' | 'idalunos') => {
@@ -633,7 +908,8 @@ export default function AdminTestes() {
     label, 
     items, 
     selectedIds, 
-    field,
+    onToggle,
+    onToggleAll,
     displayProp,
     maxHeight = 'max-h-40',
     subtitle,
@@ -642,7 +918,8 @@ export default function AdminTestes() {
     label: string, 
     items: any[], 
     selectedIds: string[], 
-    field: 'idmat' | 'idseries' | 'idtema' | 'idalunos',
+    onToggle: (id: string) => void,
+    onToggleAll: (items: any[]) => void,
     displayProp?: string,
     maxHeight?: string,
     subtitle?: React.ReactNode,
@@ -650,30 +927,6 @@ export default function AdminTestes() {
   }) => {
     const allSelected = items.length > 0 && items.every(item => selectedIds.includes(item.id));
     
-    const toggleAll = () => {
-      setFormData(prev => {
-        const itemIds = items.map(i => i.id);
-        const isMateriaOrSerie = field === 'idmat' || field === 'idseries';
-        
-        if (allSelected) {
-          // Deselect only the items currently in the list
-          return {
-            ...prev,
-            [field]: prev[field].filter(id => !itemIds.includes(id)),
-            ...(isMateriaOrSerie ? { idtema: [], idalunos: [] } : {})
-          };
-        } else {
-          // Select all items currently in the list
-          const newSelection = [...new Set([...prev[field], ...itemIds])];
-          return {
-            ...prev,
-            [field]: newSelection,
-            ...(isMateriaOrSerie ? { idtema: [], idalunos: [] } : {})
-          };
-        }
-      });
-    };
-
     return (
       <div className="space-y-2">
         <div className="flex items-center gap-3">
@@ -682,12 +935,12 @@ export default function AdminTestes() {
             <div className="flex items-center gap-1.5 bg-gray-50 px-2 py-1 rounded-lg border border-gray-200">
               <input
                 type="checkbox"
-                id={`select-all-${field}`}
+                id={`select-all-${label}`}
                 checked={allSelected}
-                onChange={toggleAll}
+                onChange={() => onToggleAll(items)}
                 className="w-4 h-4 text-[#4318FF] border-gray-300 rounded focus:ring-[#4318FF] cursor-pointer"
               />
-              <label htmlFor={`select-all-${field}`} className="text-xs font-medium text-gray-500 cursor-pointer select-none">
+              <label htmlFor={`select-all-${label}`} className="text-xs font-medium text-gray-500 cursor-pointer select-none">
                 Selecionar Todos
               </label>
             </div>
@@ -702,12 +955,12 @@ export default function AdminTestes() {
               <div key={item.id} className="flex items-center gap-2">
                 <input
                   type="checkbox"
-                  id={`${field}-${item.id}`}
+                  id={`${label}-${item.id}`}
                   checked={selectedIds.includes(item.id)}
-                  onChange={() => toggleSelection(item.id, field)}
+                  onChange={() => onToggle(item.id)}
                   className="w-4 h-4 text-[#4318FF] border-gray-300 rounded focus:ring-[#4318FF]"
                 />
-                <label htmlFor={`${field}-${item.id}`} className="text-sm text-gray-700 cursor-pointer select-none">
+                <label htmlFor={`${label}-${item.id}`} className="text-sm text-gray-700 cursor-pointer select-none">
                   {renderLabel ? renderLabel(item) : (displayProp ? item[displayProp] : '')}
                 </label>
               </div>
@@ -758,10 +1011,16 @@ export default function AdminTestes() {
           
           <h1 className="text-xl md:text-2xl font-bold text-[#1B2559] truncate">Painel de Controle de Testes</h1>
           
-          <Button onClick={openModal} className="bg-[#4318FF] hover:bg-[#3311CC]">
-            <ClipboardList size={18} className="mr-2" />
-            Cadastrar Testes
-          </Button>
+          <div className="flex gap-3">
+            <Button onClick={openMassiveModal} className="bg-white text-[#4318FF] border border-[#4318FF] hover:bg-gray-50">
+              <Upload size={18} className="mr-2" />
+              Envio Massivo
+            </Button>
+            <Button onClick={openModal} className="bg-[#4318FF] hover:bg-[#3311CC]">
+              <ClipboardList size={18} className="mr-2" />
+              Cadastrar Testes
+            </Button>
+          </div>
         </header>
 
         <main className="flex-1 overflow-y-auto p-4 md:p-10 pt-0 md:pt-4">
@@ -987,7 +1246,8 @@ export default function AdminTestes() {
               label="Matérias *" 
               items={materias} 
               selectedIds={formData.idmat} 
-              field="idmat" 
+              onToggle={(id) => toggleSelection(id, 'idmat')}
+              onToggleAll={(items) => handleToggleAll(items, 'idmat')}
               displayProp="materia"
             />
 
@@ -996,7 +1256,8 @@ export default function AdminTestes() {
               label="Séries *" 
               items={series} 
               selectedIds={formData.idseries} 
-              field="idseries" 
+              onToggle={(id) => toggleSelection(id, 'idseries')}
+              onToggleAll={(items) => handleToggleAll(items, 'idseries')}
               displayProp="serie"
             />
 
@@ -1011,7 +1272,7 @@ export default function AdminTestes() {
                 </label>
                 <button
                   type="button"
-                  onClick={openTemaModal}
+                  onClick={() => openTemaModal('individual')}
                   className="flex items-center gap-1 text-xs font-medium text-[#4318FF] hover:underline"
                 >
                   <Plus size={14} />
@@ -1038,13 +1299,23 @@ export default function AdminTestes() {
               label="Alunos" 
               items={filteredAlunos} 
               selectedIds={formData.idalunos} 
-              field="idalunos"
+              onToggle={(id) => toggleSelection(id, 'idalunos')}
+              onToggleAll={(items) => handleToggleAll(items, 'idalunos')}
               subtitle={(formData.idmat.length > 0 || formData.idseries.length > 0) && (
                 <span className="text-xs text-gray-400">(filtrado por matéria/série)</span>
               )}
-              renderLabel={(aluno) => (
-                <span>{capitalizeWords(aluno.nome)} {capitalizeWords(aluno.sobrenome)}</span>
-              )}
+              renderLabel={(aluno) => {
+                const alunoSerie = series.find(s => s.id === aluno.serie)?.serie;
+                
+                return (
+                  <span className="flex items-center gap-2">
+                    <span className="font-medium">{capitalizeWords(aluno.nome)} {capitalizeWords(aluno.sobrenome)}</span>
+                    {alunoSerie && (
+                      <span className="text-xs text-gray-500">- {alunoSerie}</span>
+                    )}
+                  </span>
+                );
+              }}
             />
 
             {/* Pergunta */}
@@ -1169,6 +1440,7 @@ export default function AdminTestes() {
         onClose={closeTemaModal}
         title="Cadastrar Novo Tema"
         className="max-w-lg"
+        zIndex={70}
       >
         <div className="space-y-6">
           <div className="space-y-2">
@@ -1255,6 +1527,179 @@ export default function AdminTestes() {
               isLoading={savingTema}
             >
               Salvar Tema
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal de Envio Massivo */}
+      <Modal
+        isOpen={isMassiveModalOpen}
+        onClose={closeMassiveModal}
+        title="Envio Massivo de Testes"
+        className="max-w-3xl max-h-[90vh] overflow-y-auto"
+      >
+        <div className="space-y-6">
+          <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex gap-3">
+            <div className="text-blue-600 mt-1">
+              <FileText size={20} />
+            </div>
+            <div className="text-sm text-blue-800">
+              <p className="font-bold mb-1">Instruções de Importação</p>
+              <p className="mb-2">Envie um arquivo <strong>.txt</strong> com os dados separados por pipe ( | ).</p>
+              <p className="font-mono text-xs bg-white/50 p-2 rounded border border-blue-200">
+                Pergunta | Alternativa1;Alternativa2... | Resposta (1-10) | Justificativa
+              </p>
+            </div>
+          </div>
+
+          {/* Matérias */}
+          <MultiSelect 
+            label="Matérias *" 
+            items={materias} 
+            selectedIds={massiveFormData.idmat} 
+            onToggle={(id) => toggleMassiveSelection(id, 'idmat')}
+            onToggleAll={(items) => handleMassiveToggleAll(items, 'idmat')}
+            displayProp="materia"
+          />
+
+          {/* Séries */}
+          <MultiSelect 
+            label="Séries *" 
+            items={series} 
+            selectedIds={massiveFormData.idseries} 
+            onToggle={(id) => toggleMassiveSelection(id, 'idseries')}
+            onToggleAll={(items) => handleMassiveToggleAll(items, 'idseries')}
+            displayProp="serie"
+          />
+
+          {/* Temas */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-gray-700">
+                Tema 
+                {(massiveFormData.idmat.length > 0 || massiveFormData.idseries.length > 0) && 
+                  <span className="text-xs text-gray-400 ml-2">(filtrado por matéria/série)</span>
+                }
+              </label>
+              <button
+                type="button"
+                onClick={() => openTemaModal('massive')}
+                className="flex items-center gap-1 text-xs font-medium text-[#4318FF] hover:underline"
+              >
+                <Plus size={14} />
+                Cadastrar Tema
+              </button>
+            </div>
+            <select
+              value={massiveFormData.idtema[0] || ''}
+              onChange={(e) => setMassiveFormData(prev => ({ 
+                ...prev, 
+                idtema: e.target.value ? [e.target.value] : [] 
+              }))}
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none"
+            >
+              <option value="">Selecione um tema (opcional)</option>
+              {filteredTemasMassive.map(tema => (
+                <option key={tema.id} value={tema.id}>{tema.nometema}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Alunos */}
+          <MultiSelect 
+            label="Alunos" 
+            items={filteredAlunosMassive} 
+            selectedIds={massiveFormData.idalunos} 
+            onToggle={(id) => toggleMassiveSelection(id, 'idalunos')}
+            onToggleAll={(items) => handleMassiveToggleAll(items, 'idalunos')}
+            subtitle={(massiveFormData.idmat.length > 0 || massiveFormData.idseries.length > 0) && (
+              <span className="text-xs text-gray-400">(filtrado por matéria/série)</span>
+            )}
+            renderLabel={(aluno) => {
+              const alunoSerie = series.find(s => s.id === aluno.serie)?.serie;
+              
+              return (
+                <span className="flex items-center gap-2">
+                  <span className="font-medium">{capitalizeWords(aluno.nome)} {capitalizeWords(aluno.sobrenome)}</span>
+                  {alunoSerie && (
+                    <span className="text-xs text-gray-500">- {alunoSerie}</span>
+                  )}
+                </span>
+              );
+            }}
+          />
+
+          {/* File Upload */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">Arquivo de Importação (.txt) *</label>
+            <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${massiveFile ? 'border-[#4318FF] bg-blue-50' : 'border-gray-300 hover:border-[#4318FF]'}`}>
+              <input
+                type="file"
+                accept=".txt"
+                onChange={handleFileChange}
+                className="hidden"
+                id="file-upload"
+              />
+              <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center gap-2">
+                <Upload size={32} className={massiveFile ? 'text-[#4318FF]' : 'text-gray-400'} />
+                {massiveFile ? (
+                  <span className="text-sm font-bold text-[#4318FF]">{massiveFile.name}</span>
+                ) : (
+                  <span className="text-sm text-gray-500">Clique para selecionar um arquivo .txt</span>
+                )}
+              </label>
+            </div>
+          </div>
+
+          {/* Log de Importação */}
+          {importLog && (
+            <div className={`rounded-xl p-4 ${importLog.success > 0 && importLog.errors.length === 0 ? 'bg-green-50 border border-green-100' : 'bg-orange-50 border border-orange-100'}`}>
+              <div className="flex items-center gap-2 mb-2">
+                {importLog.errors.length > 0 ? (
+                  <AlertTriangle className="text-orange-500" size={20} />
+                ) : (
+                  <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center text-white text-xs">✓</div>
+                )}
+                <span className="font-bold text-gray-800">Resultado da Importação</span>
+              </div>
+              <p className="text-sm text-gray-600 mb-2">
+                Sucessos: <span className="font-bold text-green-600">{importLog.success}</span> | 
+                Falhas: <span className="font-bold text-red-600">{importLog.errors.length}</span>
+              </p>
+              
+              {importLog.errors.length > 0 && (
+                <div className="mt-3 bg-white rounded-lg border border-orange-200 p-3 max-h-40 overflow-y-auto">
+                  <p className="text-xs font-bold text-gray-500 mb-2">Detalhes dos Erros:</p>
+                  <ul className="space-y-1">
+                    {importLog.errors.map((err, idx) => (
+                      <li key={idx} className="text-xs text-red-600 flex gap-2">
+                        <span className="font-mono">•</span>
+                        {err}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex gap-4 pt-4 border-t border-gray-100">
+            <Button
+              variant="ghost"
+              onClick={closeMassiveModal}
+              className="flex-1"
+              disabled={importing}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleMassiveSubmit}
+              className="flex-1 bg-[#4318FF] hover:bg-[#3311CC]"
+              isLoading={importing}
+              disabled={!massiveFile}
+            >
+              Importar Testes
             </Button>
           </div>
         </div>

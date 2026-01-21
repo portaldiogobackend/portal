@@ -13,7 +13,8 @@ import {
   AlertCircle,
   ChevronRight,
   ChevronLeft,
-  Filter
+  Filter,
+  Menu
 } from 'lucide-react';
 import { Toast, type ToastType } from '@/components/ui/Toast';
 import { Spinner } from '@/components/ui/Spinner';
@@ -47,9 +48,11 @@ interface Tema {
 export const TesteAlunos: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [userName, setUserName] = useState('');
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
 
@@ -201,10 +204,10 @@ export const TesteAlunos: React.FC = () => {
 
   const filteredTestes = testes.filter(teste => {
     // Filter by Materia
-    if (filterMateria && !teste.idmat.includes(filterMateria)) return false;
+    if (filterMateria && (!teste.idmat || !teste.idmat.includes(filterMateria))) return false;
     
     // Filter by Tema
-    if (filterTema && !teste.idtema.includes(filterTema)) return false;
+    if (filterTema && (!teste.idtema || !teste.idtema.includes(filterTema))) return false;
     
     // Filter by Status
     const status = getStatus(teste.id);
@@ -213,6 +216,14 @@ export const TesteAlunos: React.FC = () => {
     if (filterStatus === 'incorrect') return status === 'incorrect';
     
     return true;
+  });
+
+  const availableTemas = temas.filter(tema => {
+    return testes.some(teste => {
+      // If a materia is selected, only consider tests of that materia
+      if (filterMateria && (!teste.idmat || !teste.idmat.includes(filterMateria))) return false;
+      return teste.idtema?.includes(tema.id);
+    });
   });
 
   const getCardFooter = (teste: Teste, isDone: boolean, status: string) => {
@@ -227,7 +238,7 @@ export const TesteAlunos: React.FC = () => {
       );
     }
 
-    const correctAnswer = teste.alternativa.split(';')[teste.resposta - 1];
+    const correctAnswer = (teste.alternativa || '').split(';')[teste.resposta - 1];
     
     return (
       <div className="flex flex-col items-end gap-2">
@@ -260,6 +271,8 @@ export const TesteAlunos: React.FC = () => {
         userName={userName}
         loading={loading}
         onLogoutClick={() => setShowLogoutModal(true)}
+        isMobileOpen={isMobileOpen}
+        setIsMobileOpen={setIsMobileOpen}
       />
 
       <LogoutModal 
@@ -271,14 +284,35 @@ export const TesteAlunos: React.FC = () => {
       <div className="flex-1 flex flex-col overflow-hidden w-full relative">
         <main className="flex-1 overflow-y-auto p-4 md:p-10">
           <div className="max-w-[1200px] mx-auto">
-            <div className="mb-8">
-              <h1 className="text-2xl font-bold text-[#1B2559] flex items-center gap-2">
-                <FileCheck className="text-[#4318FF]" />
-                Meus Testes
-              </h1>
-              <p className="text-gray-500 mt-1">Responda aos questionários atribuídos a você.</p>
+            <div className="mb-8 flex flex-col md:block">
+              <div className="flex items-center gap-3 mb-2 md:mb-0">
+                <button 
+                  onClick={() => setIsMobileOpen(true)}
+                  className="md:hidden p-2 text-gray-600 hover:text-[#4318FF] hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <Menu size={24} />
+                </button>
+                <h1 className="text-2xl font-bold text-[#1B2559] flex items-center gap-2">
+                  <FileCheck className="text-[#4318FF]" />
+                  Meus Testes
+                </h1>
+              </div>
+              <p className="text-gray-500 mt-1 md:ml-0 ml-12">Responda aos questionários atribuídos a você.</p>
             </div>
 
+            {error ? (
+              <div className="flex flex-col items-center justify-center py-20 gap-4">
+                <AlertCircle size={48} className="text-red-500" />
+                <p className="text-lg text-gray-700 font-medium text-center">{error}</p>
+                <button 
+                  onClick={() => window.location.reload()}
+                  className="px-6 py-2 bg-[#4318FF] text-white rounded-xl hover:bg-[#3311CC] transition-colors font-bold shadow-lg shadow-[#4318FF]/20"
+                >
+                  Tentar Novamente
+                </button>
+              </div>
+            ) : (
+              <>
             {!loading && !selectedTeste && (
               <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 mb-6 flex flex-col xl:flex-row gap-4 items-center justify-between">
                 <div className="flex gap-2 w-full xl:w-auto overflow-x-auto pb-2 xl:pb-0 no-scrollbar">
@@ -322,7 +356,7 @@ export const TesteAlunos: React.FC = () => {
                       className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border-none rounded-xl text-sm font-medium text-gray-700 focus:ring-2 focus:ring-[#4318FF]/20 cursor-pointer hover:bg-gray-100 transition-colors appearance-none"
                     >
                       <option value="">Todos os Temas</option>
-                      {temas.map(t => <option key={t.id} value={t.id}>{t.nometema}</option>)}
+                      {availableTemas.map(t => <option key={t.id} value={t.id}>{t.nometema}</option>)}
                     </select>
                   </div>
                 </div>
@@ -335,7 +369,7 @@ export const TesteAlunos: React.FC = () => {
               </div>
             ) : selectedTeste ? (
               // Test View
-              <div className="bg-white rounded-3xl p-8 shadow-xl shadow-gray-200/40 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="bg-white rounded-3xl p-4 md:p-8 shadow-xl shadow-gray-200/40 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <button 
                   onClick={() => setSelectedTeste(null)}
                   className="mb-6 text-sm font-bold text-[#A3AED0] hover:text-[#4318FF] flex items-center gap-1 transition-colors"
@@ -355,7 +389,7 @@ export const TesteAlunos: React.FC = () => {
                 </div>
 
                 <div 
-                  className="text-xl font-bold text-[#1B2559] mb-8 leading-relaxed"
+                  className="text-lg md:text-xl font-bold text-[#1B2559] mb-8 leading-relaxed break-words [&_img]:max-w-full [&_p]:break-words"
                   dangerouslySetInnerHTML={{ __html: decodeAndSanitize(selectedTeste.pergunta) }}
                 />
 
@@ -428,7 +462,7 @@ export const TesteAlunos: React.FC = () => {
                 ) : (
                   <button
                     onClick={() => setSelectedTeste(null)}
-                    className="w-full md:w-auto px-8 py-4 bg-gray-900 text-white font-bold rounded-xl shadow-lg hover:bg-gray-800 transition-all"
+                    className="w-full md:w-auto px-6 py-3 md:px-8 md:py-4 bg-gray-900 text-white font-bold rounded-xl shadow-lg hover:bg-gray-800 transition-all"
                   >
                     Voltar para Testes
                   </button>
@@ -499,6 +533,8 @@ export const TesteAlunos: React.FC = () => {
                   })
                 )}
               </div>
+            )}
+            </>
             )}
           </div>
         </main>

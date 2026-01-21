@@ -129,7 +129,7 @@ const Usuarios: React.FC = () => {
           .eq('id', user.id)
           .single();
 
-        if (data) {
+        if (data?.nome) {
           setUserName(data.nome.split(' ')[0]);
         }
       }
@@ -246,8 +246,9 @@ const Usuarios: React.FC = () => {
   const toggleMateria = (materiaId: string) => {
     setEditForm(prev => {
       const currentMaterias = prev.materias || [];
-      if (currentMaterias.includes(materiaId)) {
-        return { ...prev, materias: currentMaterias.filter(id => id !== materiaId) };
+      // Use string comparison to handle mixed types (string/number)
+      if (currentMaterias.some(id => String(id) === String(materiaId))) {
+        return { ...prev, materias: currentMaterias.filter(id => String(id) !== String(materiaId)) };
       } else {
         return { ...prev, materias: [...currentMaterias, materiaId] };
       }
@@ -316,11 +317,11 @@ const Usuarios: React.FC = () => {
   const getFormattedMaterias = (userMaterias: string[] | undefined) => {
     if (!userMaterias || userMaterias.length === 0) return '-';
     
-    // Create a map for faster lookup if list is large, but for now find is fine
     return userMaterias
       .map(id => {
-        const materia = materias.find(m => m.id === id);
-        return materia ? materia.materia.substring(0, 3) : '';
+        // Compare as strings to handle potential type mismatches (number vs string)
+        const materia = materias.find(m => String(m.id) === String(id));
+        return materia ? materia.materia : '';
       })
       .filter(Boolean)
       .join(', ');
@@ -523,8 +524,8 @@ const Usuarios: React.FC = () => {
                         <label key={materia.id} className="flex items-center gap-2 cursor-pointer hover:bg-white/50 p-2 rounded-lg transition-colors">
                           <input
                             type="checkbox"
-                             checked={editForm.materias?.includes(materia.id)}
-                             onChange={() => toggleMateria(materia.id)}
+                             checked={editForm.materias?.map(String).includes(String(materia.id))}
+                             onChange={() => toggleMateria(String(materia.id))}
                             className="w-4 h-4 rounded border-gray-300 text-[#0061FF] focus:ring-[#0061FF]"
                           />
                           <span className="text-sm font-medium text-[#2B3674]">{materia.materia}</span>
@@ -796,7 +797,14 @@ const Usuarios: React.FC = () => {
                               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#0061FF] to-[#422AFB] flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-blue-200 uppercase">
                                 {user.nome.charAt(0)}{user.sobrenome.charAt(0)}
                               </div>
-                              <span className="font-bold text-[#1B2559]">{capitalizeWords(`${user.nome} ${user.sobrenome}`)}</span>
+                              <span className="font-bold text-[#1B2559]">
+                                {capitalizeWords(`${user.nome} ${user.sobrenome}`)}
+                                {user.role === 'aluno' && user.materias && user.materias.length > 0 && (
+                                  <span className="ml-2 font-normal text-gray-500 text-xs">
+                                    - {getFormattedMaterias(user.materias)}
+                                  </span>
+                                )}
+                              </span>
                             </div>
                           </td>
                           <td className="px-8 py-5">

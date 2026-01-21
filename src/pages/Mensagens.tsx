@@ -112,25 +112,33 @@ export const Mensagens: React.FC = () => {
         data: { user },
       } = await supabase.auth.getUser();
       if (user) {
-        const { data, error } = await supabase
-          .from("tbf_controle_user")
-          .select("nome, role")
-          .eq("id", user.id)
-          .single();
+        // Usando RPC para evitar recursão de RLS e erros de conexão
+        const { data, error } = await supabase.rpc('get_user_profile');
 
         if (error) {
           console.error("Erro ao buscar dados do usuário:", error);
+          setLoading(false);
           return;
         }
 
         if (data) {
-          setUserName(capitalizeWords(data.nome.split(" ")[0]));
+          setUserName(capitalizeWords((data.nome || "Admin").split(" ")[0]));
           setUserRole(data.role);
           console.log("Role do usuário logado:", data.role);
+          
+          // Se não for admin, o useEffect cuidará do loading, mas podemos garantir aqui
+          if (data.role !== 'admin') {
+             setLoading(false);
+          }
+        } else {
+          setLoading(false);
         }
+      } else {
+        setLoading(false);
       }
     } catch (error) {
       console.error("Error fetching user data:", error);
+      setLoading(false);
     }
   };
 
